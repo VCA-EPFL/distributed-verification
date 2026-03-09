@@ -1,0 +1,10 @@
+name = "distributed"
+defaultTargets = ["Distributed"]
+
+[[lean_lib]]
+name = "Distributed"
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.28.0"
