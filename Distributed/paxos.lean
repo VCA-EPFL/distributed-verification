@@ -2,6 +2,30 @@
 namespace Paxos
 
 
+def update_Fin {a: Type} (i' : Fin n)  (e : a) (f : Fin n -> a) : Fin n -> a :=
+  fun i =>
+    if i' == i then
+      e
+    else
+      f i
+
+@[simp]
+theorem update_Fin_gso {a: Type} (i i' : Fin n)  (e : a) (f : Fin n -> a) :
+  ¬(i' = i) -> update_Fin i' e f i = f i := by
+    intro h1
+    unfold update_Fin
+    simp [*] at *
+
+@[simp]
+theorem update_Fin_gso2 {a: Type} (i i' : Fin n)  (e : a) (f : Fin n → a) :
+  ¬(i = i') → update_Fin i' e f i = f i := by intros; simp [update_Fin, *]; intros; simp_all
+
+@[simp]
+theorem update_Fin_gss {a: Type} (i  : Fin n)  (e : a) (f : Fin n -> a) :
+  update_Fin i e f i  = e := by
+    unfold update_Fin
+    simp
+
 abbrev ballot := Nat
 abbrev value := Nat
 abbrev f := Nat
@@ -9,7 +33,7 @@ def n (f : Nat) : Nat := 2 * f + 1
 
 
 structure Proposer (f : Nat) where
-  proposer_id : Fin (n f)
+  proposer_id : Fin 2
   propose : value
   promise_collect : List (Fin (n f))
   hight_ballot : ballot
@@ -51,16 +75,16 @@ inductive proposer_step (f : Nat ): Proposer f -> Network f -> Proposer f -> Net
     proposer_step f p n p
       { n with network := n.network ++ [message.propose p.hight_ballot p.propose p.proposer_id ]}
 --ad the start of each proposer p.hight_ballot = 0
-| recive_promise: ∀ p n j b accept id,
-    n.networkj = some (.promise b accept id) ->
+| recive_promise: ∀ p n (j : Nat) b accept id,
+    n.network[j]? = some (message.promise b accept id) ->
     b = p.proposer_id ->
     id ∉ p.promise_collect ->
     accept.1 ≤ p.hight_ballot ->
     proposer_step f p n
       { p with promise_collect := p.promise_collect ++ [id]}
       n
-| recive_promise_update: ∀ p n j b accept id,
-    n.network.get? j = some (.promise b accept id) ->
+| recive_promise_update: ∀ p n (j : Nat) b accept id,
+    n.network[j]? = some (message.promise b accept id) ->
     b = p.proposer_id ->
     id ∉ p.promise_collect ->
     accept.1 > p.hight_ballot ->
@@ -72,14 +96,14 @@ inductive proposer_step (f : Nat ): Proposer f -> Network f -> Proposer f -> Net
 
 
 inductive acceptor_step (f : Nat ): Acceptor f -> Network f -> Acceptor f -> Network f -> Prop where
-| recive_prepare: ∀ a n j b,
-    n.network.get? j = some (.prepare b) ->
+| recive_prepare: ∀ a n (j : Nat) b,
+    n.network[j]? = some (message.prepare b) ->
     b > a.promise ->
     acceptor_step f a n
       { a with promise := b}
       { n with network := n.network ++ [message.promise b a.accept a.acceptor_id]}
-| recive_propose: ∀ a n j b v id,
-    n.network.get? j = some (.propose b v id) ->
+| recive_propose: ∀ a n (j : Nat) b v id,
+    n.network[j]? = some (message.propose b v id) ->
     b ≥ a.promise ->
     acceptor_step f a n
       { a with accept := (b, v)
@@ -89,8 +113,8 @@ inductive acceptor_step (f : Nat ): Acceptor f -> Network f -> Acceptor f -> Net
 
 
 inductive learner_step (f : Nat ): Learner f -> Network f -> Learner f -> Network f -> Prop where
-| recive_accept: ∀ l n j acc id,
-    n.network.get? j = some (.accept acc id) ->
+| recive_accept: ∀ l n (j : Nat) acc id,
+    n.network[j]? = some (message.accept acc id) ->
     id ∉ l.accept_recived acc ->
     learner_step f l n
       { l with accept_recived acc := l.accept_recived acc ++ [id]}
@@ -106,17 +130,17 @@ inductive paxos_step (f : Nat): system f -> system f -> Prop where
 | proposer: ∀ s p' n' i,
     proposer_step f (s.proposers i) (s.network) p' n' ->
     paxos_step f s
-      { s with proposers i := p'
+      { s with proposers := update_Fin i p' s.proposers
                network := n' }
 | acceptor: ∀ s a' i n',
     acceptor_step f (s.acceptors i) (s.network) a' n' ->
     paxos_step f s
-      { s with acceptors i := a'
+      { s with acceptors := update_Fin i a' s.acceptors
                network := n' }
 | learner: ∀ s l' i n',
     learner_step f (s.learners i) (s.network) l' n' ->
     paxos_step f s
-      { s with learners i := l'
+      { s with learners := update_Fin i l' s.learners
                network := n'}
 
 
@@ -147,7 +171,7 @@ def silver_invariant {f : Nat} (s : system f) :=
   (s.proposers i).propose = v)
 
 def bronze_invariant {f : Nat} (s : system f) :=
-  (∀ j b v id , s.network.network.get? j = some (.propose b v id) -> (s.proposers id).propose = v ∧ (s.proposers id).promise_collect.length ≥ f + 1 )
+  (∀ (j : Nat) b v id , s.network.network[j]? = some (message.propose b v id) -> (s.proposers id).propose = v ∧ (s.proposers id).promise_collect.length ≥ f + 1 )
 
 -- the idea is that if a value v is accepted by f+1 acceptors,
 -- then any proposer that has received f+1 promises must have proposed v if the tra
