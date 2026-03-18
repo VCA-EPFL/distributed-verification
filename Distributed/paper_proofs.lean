@@ -40,7 +40,7 @@ else
    c2 = c1
 
 def CoordinatorSendDecideStep (c1: Coordinator n) (c2: Coordinator n) (m: Message n) : Prop:=
-∃ a, c1.decision = some a ∧ m = Message.Decide Decision.Abort
+∃ a, c1.decision = some a ∧ m = Message.Decide a
 
 def ParticipantReceiveDecisionStep (p1: Participant n) (p2: Participant n) (m: Message n) : Prop:=
 ∃ a, m = Message.Decide a ∧ p1.decision = none ∧ p2 = {p1 with decision := some a}
@@ -50,8 +50,8 @@ inductive step : System -> System -> Prop where
 | partSendPref: ∀ (s: System) i p2 snd, ParticipantSendsPreference (s.participants i) p2 snd -> step s {s with participants := updateSet s.participants i p2, network := {s.network with network := snd :: s.network.network}}
 | coordRecvPref: ∀ (s: System) c2 rcv , CoordinatorReceivesPreference s.coordinator c2 rcv -> step s {s with coordinator := c2, network := {s.network with network := s.network.network.erase rcv}}
 | coordMksDec: ∀ s c2, CoordinatorMakesDecisionStep s.coordinator c2 -> step s {s with coordinator := c2}
-| coordSndDecStep: ∀ (s: System) c2 snd, CoordinatorSendDecideStep s.coordinator c2 snd -> step s {s with coordinator := c2, network := {s.network with network := snd :: s.network.network}}
-| partRecvDec: ∀ s p2 i rcv, ParticipantReceiveDecisionStep (s.participants i) p2 rcv -> step s {s with participants := updateSet s.participants i p2, network := {s.network with network := s.network.network.erase rcv}}
+| coordSndDecStep: ∀ (s: System) snd, CoordinatorSendDecideStep s.coordinator s.coordinator snd -> step s {s with coordinator := s.coordinator, network := {s.network with network := snd :: s.network.network}}
+| partRecvDec: ∀ s p2 i rcv, ParticipantReceiveDecisionStep (s.participants i) p2 rcv -> rcv ∈ s.network.network -> step s {s with participants := updateSet s.participants i p2, network := {s.network with network := s.network.network.erase rcv}}
 
 inductive steps : System -> System -> Prop where
 | refl : ∀ s1, steps s1 s1
@@ -61,37 +61,64 @@ def validSystem (s: System) :=
 ∃ s0, systemInits s0  ∧ steps s0 s
 
 
-theorem commitImpliesYesByAll (s: System) :
-    validSystem s
+
+
+theorem commitImpliesMessageSent (s0 s: System) :
+    validSystem s0
+    -> step s0 s 
     -> (∃ i, (s.participants i).decision = Decision.Commit)
-    -> s.coordinator.yesVotes.count true = s.coordinator.numParticipants := by
-    intros sValid DecisionInS
-    unfold validSystem systemInits at sValid; rcases sValid with ⟨ s0, s0Inits, steps⟩; revert DecisionInS
-    induction steps with
-    | refl => unfold networkInits coordinatorInits participantInits at s0Inits; rcases s0Inits with ⟨ s0empty, ⟨ s0None, s0NoYes,s0NoNo⟩,c⟩
-              grind
-    | trans s1 s2 steps1 step2 IH =>
-      intro DecInS2
-      cases step2 with
-      | partSendPref n1 p1 message Part  =>
-        clear s0Inits; simp [updateSet, ParticipantSendsPreference]at *; grind
-      | partRecvDec p1 id message step =>
-        clear s0Inits; simp [ParticipantReceiveDecisionStep, updateSet] at *; rcases step with ⟨ Dec, message_nat , DecIsNone, newP⟩;
-        rcases DecInS2 with ⟨ i, decNature⟩
-        split at decNature
-        sorry
-        grind
-      
-        
-        
-        
-        
-        
-                                                     
-                                                  
-                        
-      
-       
+    -> ∃ i, (s0.participants i).decision = Decision.Commit ∨ Message.Decide Decision.Commit ∈ s0.network.network := by
+    intros s0Valid sSteps sCommits
+    cases sSteps with
+    | partSendPref i p m stepRule =>
+      simp [ParticipantSendsPreference] at stepRule; simp at sCommits; rcases sCommits with ⟨ i', oldCommit⟩; unfold updateSet at oldCommit 
+      grind
+    | partRecvDec  p i m stepRule net =>
+      simp [ParticipantReceiveDecisionStep] at stepRule; simp at sCommits;rcases sCommits with ⟨ i', oldCommit⟩; unfold updateSet at oldCommit; exists i'
+      split at oldCommit <;> try grind
+    | coordSndDecStep m stepRule =>
+      grind
+    | coordMksDec c stepRule => grind
+    | coordRecvPref => grind
+
+theorem messageSentImplies (s: System) :
+    validSystem s ->
+    Message.Decide Decision.Commit ∈ s.network.network
+    -> s.coordinator.decision = Decision.Commit := by
+       intro sValid messInNetwwork; unfold validSystem at sValid; rcases sValid  with ⟨ s0, s0Inits, sSteps ⟩
+       induction sSteps with
+       | refl =>
+         unfold systemInits networkInits at s0Inits
+         grind
+       | trans s1 s2 s1Steps s2Step IH =>
+         cases s2Step <;> simp [CoordinatorSendDecideStep, CoordinatorSendDecideStep, CoordinatorMakesDecisionStep, CoordinatorReceivesPreference, ParticipantSendsPreference] at * <;> grind
+         
+         
+theorem decisionImpliesVotes (s: System) :
+    validSystem s 
+    -> s.coordinator.decision = Decision.Commit
+    -> s.coordinator.yesVotes.count true == s.n := by
+       intro sValid messInNetwwork; unfold validSystem at sValid; rcases sValid  with ⟨ s0, s0Inits, sSteps ⟩
+       induction sSteps with
+       | refl =>
+         unfold systemInits coordinatorInits at s0Inits
+         grind
+       | trans s1 s2 s1Steps s2Step IH =>
+         cases s2Step with
+         | partSendPref i p m stepRule =>
+           simp [ParticipantSendsPreference] at stepRule; grind
+         | partRecvDec  p i m stepRule net =>
+           simp [ParticipantReceiveDecisionStep] at stepRule; grind
+         | coordSndDecStep m stepRule => grind
+         | coordMksDec c stepRule => simp [CoordinatorMakesDecisionStep] at stepRule; grind
+         | coordRecvPref c m stepRule=>
+           simp [CoordinatorReceivesPreference ] at *; rcases stepRule with ⟨pref, id, mNat, func⟩
+           sorry
+
+
+                       
+         
+         
 
 
 
