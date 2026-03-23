@@ -30,15 +30,17 @@ def count (s: Set n): Nat :=
         0
 
 
+
+theorem maxCount (s: Set n) :
+count s <= n := by sorry
+
+
 theorem fullSetImpN (s: Set n):
 count s = n
 -> ∀ i, s i = true := by
    sorry
    
    
-   
-   
-
 theorem setAcceptNotIncr (s: Set n) (h: n ≠ 0) :
 ∀ i, s i = true
 -> ∀ i, count (insertElem s i) = n := by
@@ -56,6 +58,14 @@ count s = n
    have cc : (n +1 ≠ 0) := by {grind}
    apply (setAcceptNotIncr s cc)
    apply (fullSetImpN s countN); apply i
+
+
+theorem fullSetCannotIncreaseContra (s: Set n):
+∀ i, ¬(count (insertElem s i) = n)
+-> ¬count s = n:= by
+   have contr := fullSetCannotIncrease s; grind
+   
+
 
    
 

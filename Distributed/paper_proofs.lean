@@ -1,5 +1,6 @@
 -- Properties that check that the network is a valid network
 import Distributed.paper_implementation
+import Mathlib.Tactic.ByContra
 
 namespace Steps
 open Model
@@ -52,7 +53,7 @@ inductive step : System n -> System n -> Prop where
 | coordRecvPref: ∀ (s: System n) (c2: Coordinator n) (rcv: Message n) , CoordinatorReceivesPreference s.coordinator c2 rcv -> rcv ∈ s.network.network-> step s {s with coordinator := c2, network := {s.network with network := s.network.network.erase rcv}}
 | coordMksDec: ∀ (s: System n) (c2: Coordinator n), CoordinatorMakesDecisionStep s.coordinator c2 -> step s {s with coordinator := c2}
 | coordSndDecStep: ∀ (s: System n) (snd: Message n), CoordinatorSendDecideStep s.coordinator s.coordinator snd -> step s {s with coordinator := s.coordinator, network := {s.network with network := snd :: s.network.network}}
-| partRecvDec: ∀ (s: System n) (p2: Participant n) (i: Fin n) (rcv: Message n), ParticipantReceiveDecisionStep (s.participants i) p2 rcv -> rcv ∈ s.network.network -> step s {s with participants := updateMap s.participants i p2, network := {s.network with network := s.network.network.erase rcv}}
+| partRecvDec: ∀ (s: System n) (p2: Participant n) (i: Fin n) (rcv: Message n), ParticipantReceiveDecisionStep (s.participants i) p2 rcv -> rcv ∈ s.network.network -> step s {s with participants := updateMap s.participants i p2, network := s.network}
 
 inductive steps : System n -> System n -> Prop where
 | refl : ∀ s1, steps s1 s1
@@ -74,143 +75,74 @@ validSystem s
    rename_i p i  m stepRule mInN ;simp [ParticipantReceiveDecisionStep] at stepRule; simp [updateMap]; grind
 
 
-theorem commitImpliesMessageSent (s0 s: System n) :
-    validSystem s0
-    -> step s0 s 
-    -> (∃ i, (s.participants i).decision = Decision.Commit)
-    -> ∃ i, (s0.participants i).decision = Decision.Commit ∨ Message.Decide Decision.Commit ∈ s0.network.network := by
-    intros s0Valid sSteps sCommits
-    cases sSteps with
-    | partSendPref i p m stepRule =>
-      simp [ParticipantSendsPreference] at stepRule; simp at sCommits; rcases sCommits with ⟨ i', oldCommit⟩; unfold updateMap at oldCommit 
-      grind
-    | partRecvDec p i m stepRule net =>
-      simp [ParticipantReceiveDecisionStep] at stepRule; simp at sCommits;rcases sCommits with ⟨ i', oldCommit⟩; unfold updateMap at oldCommit; exists i'
-      split at oldCommit <;> try grind
-    | coordSndDecStep m stepRule =>
-      grind
-    | coordMksDec c stepRule => grind
-    | coordRecvPref => grind
 
 
 
-theorem messageSentImplies (s: System n) :
-    validSystem s ->
-    Message.Decide Decision.Commit ∈ s.network.network
-    -> s.coordinator.decision = Decision.Commit := by
-       intro sValid messInNetwwork; unfold validSystem at sValid; rcases sValid  with ⟨ s0, s0Inits, sSteps ⟩
-       induction sSteps with
-       | refl =>
-         unfold systemInits networkInits at s0Inits
-         grind
-       | trans s1 s2 s1Steps s2Step IH =>
-         cases s2Step <;> simp [CoordinatorSendDecideStep, CoordinatorSendDecideStep, CoordinatorMakesDecisionStep, CoordinatorReceivesPreference, ParticipantSendsPreference] at * <;> try grind
-         
+
+
+
+theorem commitImpYesVotesIsNINV (s: System n) :
+validSystem s
+-> count s.coordinator.yesVotes ≠ n
+-> (∀ i, (s.participants i).decision ≠  some Decision.Commit) ∧ Message.Decide Decision.Commit ∉ s.network.network ∧ s.coordinator.decision ≠ Decision.Commit := by
+   intros validSys
+   intro coordNeqN
+   unfold validSystem at validSys; rcases  validSys with ⟨ s0, s0Inits, sSteps ⟩
+   induction sSteps with
+   | refl => simp [systemInits, networkInits, participantInits, coordinatorInits] at s0Inits; grind
+   | trans s1 s2 sStep sSteps IH =>
+     cases sSteps with
+     | partRecvDec p i m stepRule mInN =>
+       simp [ParticipantReceiveDecisionStep, updateMap] at *;
+       grind
+     | coordSndDecStep m stepRule =>
+       simp [CoordinatorSendDecideStep] at *; 
+       grind
+     | coordMksDec c stepRule =>
+       simp [CoordinatorMakesDecisionStep] at *;
+       grind
+     | partSendPref i p m stepRule =>
+       simp [ParticipantSendsPreference, updateMap] at *; 
+       grind
+     | coordRecvPref c m stepRule mInN =>
+       simp [CoordinatorReceivesPreference] at *; rcases stepRule with ⟨ p, i', mNat, splitFun ⟩; split at splitFun <;> try grind
+       subst_vars; simp at *;
+       have abs := fullSetCannotIncreaseContra s1.coordinator.yesVotes i' coordNeqN; grind
        
-              
-         
-theorem decisionImpliesVotes (s: System n) :
-    validSystem s 
-    -> s.coordinator.decision = Decision.Commit
-    -> count s.coordinator.yesVotes == n := by
-       intro sValid messInNetwork; unfold validSystem at sValid; rcases sValid  with ⟨ s0, s0Inits, sSteps ⟩
-       induction sSteps with
-       | refl =>
-         unfold systemInits coordinatorInits at s0Inits
-         grind
-       | trans s1 s2 s1Steps s2Step IH =>
-         cases s2Step with
-         | partSendPref i p m stepRule =>
-           simp [ParticipantSendsPreference] at stepRule; grind
-         | partRecvDec  p i m stepRule net =>
-           simp [ParticipantReceiveDecisionStep] at stepRule; grind
-         | coordSndDecStep m stepRule => grind
-         | coordMksDec c stepRule => simp [CoordinatorMakesDecisionStep] at stepRule; grind
-         | coordRecvPref c m stepRule=>
-           simp [CoordinatorReceivesPreference ] at *; rcases stepRule with ⟨pref, id, mNat, func⟩
-           split at func <;> try grind
-           subst_vars; simp at *
-           apply fullSetCannotIncrease; apply IH; apply messInNetwork
-           
+  
+theorem commitImpYesVotesIsN (s: System n) :
+validSystem s
+-> (∃ i, (s.participants i).decision = some Decision.Commit)
+-> count s.coordinator.yesVotes = n:= by
+   intros validSys partIsCommit
+   have contra := commitImpYesVotesIsNINV s validSys
+   by_contra h; grind
 
-theorem yesVotesImpMessage (s_ s: System n) (i: Fin n):
-    validSystem s_
-    -> step s_ s
-    -> ∀ i, s.coordinator.yesVotes i = true 
-    -> s_.coordinator.yesVotes i = true ∨ Message.Vote Preference.Yes i ∈ s_.network.network := by
-       intros s0Valid stepS
-       cases stepS with
-       | partSendPref i p m stepRule =>
-           simp [ParticipantSendsPreference] at stepRule; grind
-       | partRecvDec  p i m stepRule net =>
-           simp [ParticipantReceiveDecisionStep] at stepRule; grind
-       | coordSndDecStep m stepRule => grind
-       | coordRecvPref c m stepRule =>
-         simp [CoordinatorReceivesPreference] at stepRule; simp; intro x
-         intros yesVotesIsTrue; rcases stepRule with ⟨p, i', mIsVote, funcFlow ⟩; split at funcFlow; subst_vars; simp [insertElem, updateMap] at yesVotesIsTrue <;> try grind
-         subst_vars; grind
-       | coordMksDec c stepRule =>
-         simp [CoordinatorMakesDecisionStep] at stepRule; rcases stepRule with ⟨ cIsNone, splitFun ⟩; split at splitFun
-         intros i cTrue; subst_vars; grind
-         intros i cTrue; subst_vars; simp at *; split at splitFun <;> try grind
-         subst_vars; simp at *; left; apply cTrue
-         
-         
-theorem messageSentImp (s: System n) (i: Fin n) :
-    validSystem s
-    -> Message.Vote Preference.Yes i ∈ s.network.network
-    -> (s.participants i).preference = Preference.Yes := by
-       intro sIsValid pInN; simp [validSystem] at sIsValid; rcases sIsValid with ⟨s0, s0Inits, sSteps⟩
-       induction sSteps
-       simp [systemInits, networkInits] at s0Inits; grind
-       rename_i s1 s2 steps1 step1 IH
-       cases step1 <;> simp [CoordinatorSendDecideStep, CoordinatorSendDecideStep, CoordinatorMakesDecisionStep, CoordinatorReceivesPreference, ParticipantSendsPreference, ParticipantReceiveDecisionStep] at * <;> try grind
-       rename_i i' p m sysInfo; rcases sysInfo with ⟨ eq1, eq2 ⟩; subst eq1 eq2; simp [updateMap]; split <;> try cases pInN <;> try grind
-       rename_i neq messEq; simp at messEq;
-       rw [validSystemMapIds] at messEq; grind; simp [validSystem]; grind
-       rename_i p n1  m rule messInN; rcases rule with ⟨ d, mDec ,decNone , pNat ⟩; subst_vars; simp [updateMap]; split <;> try grind
-       
-                   
-           
+
 theorem acceptImpliesMessageSent (s: System n) (i: Fin n):
     validSystem s
     -> s.coordinator.yesVotes i = true 
     -> (s.participants i).preference = Preference.Yes := by
        intro sIsValid sCoord
-       apply messageSentImp; apply sIsValid
-       simp [validSystem] at sIsValid; rcases sIsValid with ⟨ s0, s0Inits, sSteps ⟩
-       induction sSteps
-       simp [systemInits, networkInits] at s0Inits; 
        sorry
-       sorry
-       
-       
-       
 
-           
-theorem votesImpliesMessagesSent (s: System n):
+theorem forAllIVotesImpMessageSent (s: System n):
     validSystem s
-    -> n ≠ 0
     -> count s.coordinator.yesVotes == n
     -> ∀ i, (s.participants i).preference = Preference.Yes := by
-       intros validS neqZero coordTrue i
+       intros validS coordTrue i
        apply acceptImpliesMessageSent
        grind; simp at *; apply fullSetImpN; grind;
-
-
-
        
 -- Final property we want to prove
 theorem commitImpliesPreference (s: System n) :
     validSystem s
-    -> n ≠ 0
     -> (∃ i, (s.participants i).decision = Decision.Commit)
     -> ∀ i, (s.participants i).preference = Preference.Yes := by
-    intros validSystem existsI i; simp [Steps.validSystem] at validSystem
-    rcases validSystem with ⟨s0, s0Inits, s0StepsS⟩
-    apply votesImpliesMessagesSent; unfold validSystem; grind
-    exact existsI
-    sorry
+    intros validSystem existsI i
+    apply forAllIVotesImpMessageSent s validSystem; simp
+    apply commitImpYesVotesIsN s validSystem existsI
+    
     
     
    
