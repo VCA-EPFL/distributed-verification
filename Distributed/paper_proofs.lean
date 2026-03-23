@@ -46,6 +46,7 @@ def ParticipantReceiveDecisionStep (p1: Participant n) (p2: Participant n) (m: M
 ∃ a, m = Message.Decide a ∧ p1.decision = none ∧ p2 = {p1 with decision := some a}
 
 
+
 inductive step : System n -> System n -> Prop where
 | partSendPref: ∀ (s: System n) (i: Fin n) (p2: Participant n) (snd: Message n), ParticipantSendsPreference (s.participants i) p2 snd -> step s {s with participants := updateMap s.participants i p2, network := {s.network with network := snd :: s.network.network}}
 | coordRecvPref: ∀ (s: System n) (c2: Coordinator n) (rcv: Message n) , CoordinatorReceivesPreference s.coordinator c2 rcv -> rcv ∈ s.network.network-> step s {s with coordinator := c2, network := {s.network with network := s.network.network.erase rcv}}
@@ -175,8 +176,14 @@ theorem acceptImpliesMessageSent (s: System n) (i: Fin n):
     validSystem s
     -> s.coordinator.yesVotes i = true 
     -> (s.participants i).preference = Preference.Yes := by
-       intro sIsvalid sCoord
+       intro sIsValid sCoord
+       apply messageSentImp; apply sIsValid
+       simp [validSystem] at sIsValid; rcases sIsValid with ⟨ s0, s0Inits, sSteps ⟩
+       induction sSteps
+       simp [systemInits, networkInits] at s0Inits; 
        sorry
+       sorry
+       
        
        
 
@@ -189,16 +196,21 @@ theorem votesImpliesMessagesSent (s: System n):
        intros validS neqZero coordTrue i
        apply acceptImpliesMessageSent
        grind; simp at *; apply fullSetImpN; grind;
-       
+
+
+
        
 -- Final property we want to prove
 theorem commitImpliesPreference (s: System n) :
     validSystem s
+    -> n ≠ 0
     -> (∃ i, (s.participants i).decision = Decision.Commit)
     -> ∀ i, (s.participants i).preference = Preference.Yes := by
     intros validSystem existsI i; simp [Steps.validSystem] at validSystem
     rcases validSystem with ⟨s0, s0Inits, s0StepsS⟩
-    
+    apply votesImpliesMessagesSent; unfold validSystem; grind
+    exact existsI
     sorry
+    
     
    
