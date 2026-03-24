@@ -76,11 +76,6 @@ validSystem s
 
 
 
-
-
-
-
-
 theorem commitImpYesVotesIsNINV (s: System n) :
 validSystem s
 -> count s.coordinator.yesVotes ≠ n
@@ -119,12 +114,51 @@ validSystem s
    by_contra h; grind
 
 
+theorem acceptImpliesMessageSentINV (s: System n) (i: Fin n):
+    validSystem s
+     -> (s.participants i).preference ≠ Preference.Yes
+     -> s.coordinator.yesVotes i = false ∧ Message.Vote Preference.Yes i ∉ s.network.network := by
+       intro validSys sPref
+       unfold validSystem at validSys; rcases validSys with ⟨ s0, s0Inits, sSteps ⟩
+       induction sSteps with
+       | refl => simp [systemInits, coordinatorInits, participantInits, networkInits] at s0Inits; unfold emptySet at s0Inits; grind
+       | trans s1 s2 sSteps sStep IH =>
+         cases sStep with
+         | partRecvDec p i m stepRule mInN =>
+           simp [ParticipantReceiveDecisionStep, updateMap] at *;
+           grind
+         | coordSndDecStep m stepRule =>
+           simp [CoordinatorSendDecideStep] at *; 
+           grind
+         | coordMksDec c stepRule =>
+           simp [CoordinatorMakesDecisionStep] at *;
+           rcases stepRule with ⟨ s1None, splitFun ⟩;  
+           split at splitFun
+           subst_vars; grind
+           split at splitFun <;> try (subst_vars; grind)
+         | partSendPref i' p m stepRule =>
+           simp [ParticipantSendsPreference, updateMap] at *; 
+           rcases stepRule with ⟨ _, _ ⟩ ;
+           subst_vars;split at sPref <;> try grind
+           rename_i i_neq; rw [validSystemMapIds] <;> try grind
+           unfold validSystem; exists s0
+         | coordRecvPref c m stepRule mInN =>
+           simp [CoordinatorReceivesPreference] at *; rcases stepRule with ⟨ p, i', mNat, splitFun ⟩; split at splitFun; subst_vars; simp;
+           have IHAPP := IH sPref; 
+           unfold insertElem updateMap; split <;> try grind
+           subst_vars; grind
+           
+           
+     
+
 theorem acceptImpliesMessageSent (s: System n) (i: Fin n):
     validSystem s
     -> s.coordinator.yesVotes i = true 
     -> (s.participants i).preference = Preference.Yes := by
-       intro sIsValid sCoord
-       sorry
+       have contra := acceptImpliesMessageSentINV s i 
+       by_contra h;
+       grind
+       
 
 theorem forAllIVotesImpMessageSent (s: System n):
     validSystem s
