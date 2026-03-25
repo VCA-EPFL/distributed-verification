@@ -60,13 +60,13 @@ inductive steps : System n -> System n -> Prop where
 | trans: ∀ s1 s2 s3, steps s1 s2 -> step s2 s3 -> steps s1 s3 
 
 def validSystem (s: System n) :=
-∃ s0, systemInits s0  ∧ steps s0 s
+∃ s0, systemInits s0  ∧ steps s0 s ∧ n ≠ 0
 
 
 theorem validSystemMapIds (s: System n) :
 validSystem s
 -> ∀ i, (s.participants i).hostid = i := by
-   intros sIsValid; unfold validSystem at sIsValid; rcases sIsValid with ⟨ s0, s0Inits, sSteps ⟩
+   intros sIsValid; unfold validSystem at sIsValid; rcases sIsValid with ⟨ s0, s0Inits, sSteps, nNeqZero ⟩
    induction sSteps
    unfold systemInits participantInits at s0Inits; grind
    rename_i s1 s2 sSteps sStep IH
@@ -82,7 +82,7 @@ validSystem s
 -> (∀ i, (s.participants i).decision ≠  some Decision.Commit) ∧ Message.Decide Decision.Commit ∉ s.network.network ∧ s.coordinator.decision ≠ Decision.Commit := by
    intros validSys
    intro coordNeqN
-   unfold validSystem at validSys; rcases  validSys with ⟨ s0, s0Inits, sSteps ⟩
+   unfold validSystem at validSys; rcases  validSys with ⟨ s0, s0Inits, sSteps , nNeqZero⟩
    induction sSteps with
    | refl => simp [systemInits, networkInits, participantInits, coordinatorInits] at s0Inits; grind
    | trans s1 s2 sStep sSteps IH =>
@@ -119,7 +119,7 @@ theorem acceptImpliesMessageSentINV (s: System n) (i: Fin n):
      -> (s.participants i).preference ≠ Preference.Yes
      -> s.coordinator.yesVotes i = false ∧ Message.Vote Preference.Yes i ∉ s.network.network := by
        intro validSys sPref
-       unfold validSystem at validSys; rcases validSys with ⟨ s0, s0Inits, sSteps ⟩
+       unfold validSystem at validSys; rcases validSys with ⟨ s0, s0Inits, sSteps , nNeqZero⟩
        induction sSteps with
        | refl => simp [systemInits, coordinatorInits, participantInits, networkInits] at s0Inits; unfold emptySet at s0Inits; grind
        | trans s1 s2 sSteps sStep IH =>
@@ -166,7 +166,9 @@ theorem forAllIVotesImpMessageSent (s: System n):
     -> ∀ i, (s.participants i).preference = Preference.Yes := by
        intros validS coordTrue i
        apply acceptImpliesMessageSent
-       grind; simp at *; apply fullSetImpN; grind;
+       grind; simp [validSystem] at *; apply fullSetImpN; grind;
+       grind
+       
        
 -- Final property we want to prove
 theorem commitImpliesPreference (s: System n) :

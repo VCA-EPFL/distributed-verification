@@ -31,33 +31,31 @@ def count (s: Set n): Nat :=
 
 
 
-theorem maxCount (s: Set n) :
-count s <= n := by sorry
-
-
 theorem fullSetImpN (s: Set n):
 count s = n
--> ∀ i, s i = true := by
-   sorry
+-> n ≠ 0
+-> ∀ i, s i = true := by sorry
    
-   
-theorem setAcceptNotIncr (s: Set n) (h: n ≠ 0) :
-∀ i, s i = true
--> ∀ i, count (insertElem s i) = n := by
-   intros i sIsTrue i'
-   simp [count]; split; grind
-   unfold count_ insertElem updateMap
-   sorry
+
+
+theorem setLimit (s: Set n):
+count s <= n := by
+      induction n
+      . unfold count count_; simp
+      . rename_i n IH
+        
+
+theorem insertIncreasesCount (s: Set n):
+count s <=  count (insertElem s i) := by
+sorry
+      
+      
+      
+    
    
 theorem fullSetCannotIncrease (s: Set n):
 count s = n
--> ∀ i, count (insertElem s i) = n := by 
-   induction n
-   intro sZero i; unfold count at *; grind
-   rename_i n IH; intro countN i;
-   have cc : (n +1 ≠ 0) := by {grind}
-   apply (setAcceptNotIncr s cc)
-   apply (fullSetImpN s countN); apply i
+-> ∀ i, count (insertElem s i) = n := by sorry
 
 
 theorem fullSetCannotIncreaseContra (s: Set n):
