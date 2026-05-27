@@ -1,0 +1,133 @@
+import Distributed.base_structures
+import Distributed.paxos_model
+import Mathlib.Tactic.ByContra
+
+open Model
+open PaxosModel
+namespace PaxosProof
+
+
+@[simp]
+def acceptorsAreEnoughOfValue (accs:  Map a (Acceptor a)) (net: Network) (v: Value) :=
+(∀(s1: Set a), count s1 > a / 2 -> (∀ (i : Fin a), contains s1 i = true → (∀ k, (accs i).accepted = some (v, k) ∨ Message.Learn (i, v) ∈ net.messages)))
+
+theorem acceptors_imp_sing_val_contra (s : System a l p) (v: Value):
+systemIsValid s ->
+¬ (∀ j, (s.learners j).decide = some v)
+-> ¬ acceptorsAreEnoughOfValue s.acceptors s.network v := by
+   intros sIsValid setAcc; simp
+   simp [systemIsValid] at sIsValid; rcases sIsValid with ⟨ s0, sInits, sSteps ⟩
+   induction sSteps with
+   | refl => simp [systemInits, acceptorInits, learnerInits, networkInits] at sInits;
+             exists fullSet; rw [fullSetCountsN a]
+             unfold fullSet contains
+             constructor <;> try grind
+             cases a <;> try grind
+             rename_i i; exists 1; simp; constructor
+             . exists 1; grind
+             . simp [sInits]
+   | trans s1 s2 s0Steps s1Step IH => 
+             cases s1Step
+             . rename_i workRule
+               cases workRule <;> rename_i stepRule <;> simp at stepRule <;> try grind
+               . rename_i n2 m i pr -- Send Prepare
+                 simp [stepRule]; apply IH
+                 grind
+               . rename_i v2 n2 i
+                 simp [stepRule]; apply IH --Send Acceptor
+                 grind
+               . rename_i pid i v2 acc m -- Receive Acceptor
+                 simp [setAcc] at IH
+                 rcases IH with ⟨set1, s2Counts, k, kContains, ⟨id, idRule ⟩ , learnNotIn ⟩
+                 rcases stepRule with ⟨ mNat, mInN, lDecNat, lNat ⟩ 
+                 subst_vars; exists set1; simp [s2Counts]
+                 exists k; simp [kContains]
+                 constructor <;> try grind
+                 exists id; simp [updateMap]; split
+                 . simp at ⊢ setAcc
+                   sorry
+                 . grind
+               . sorry
+               . sorry
+               . sorry
+             . rename_i failRule; cases failRule
+               rename_i stepRule; simp at *
+               sorry
+               
+               
+             
+theorem step_does_not_back_learner (s1 s2 : System a l p):
+step s1 s2
+-> ∀ j, (s1.learners j).decide = some p
+-> (s2.learners j).decide = some p := by
+    intros step; cases step
+    . rename_i wks; cases wks <;> (try simp [updateMap] at *; try grind)
+      rename_i le v i IH; intros j; split <;> try grind
+      intros le_dec; rcases IH with ⟨ set1, setCountB, setCountPoss, leNat ⟩ ; subst_vars; simp at *; sorry
+    . rename_i fs; cases fs <;> try grind
+
+@[simp]
+def learner_invariant (learner: Learner a l) (v: Value) :=
+(∀ (s: Set a), count s > a / 2 -> (∀ i, contains s i -> learner.decMap i ≠ v)) 
+
+theorem valid_sys_imp_sing_val_contra (s: System a l p):
+systemIsValid s
+-> ∃ v, ∀ j, (s.learners j).decide ≠ some v
+→ (s.learners j).decide = none ∧ learner_invariant (s.learners j) v  := by
+  intros sIsValid; simp [systemIsValid] at sIsValid; rcases sIsValid with ⟨ s0, s0Inits, s0Steps⟩
+  induction s0Steps with
+  | refl =>
+    exists 1;
+    simp [systemInits, networkInits, proposerInits, acceptorInits, learnerInits] at s0Inits
+    simp [s0Inits]
+  | trans s1 s2 s0Steps s1Step IH =>
+    cases s1Step with
+    | failureStep stepRule => cases stepRule; simp; sorry
+    | workingStep stepRule =>
+      cases stepRule with
+      | choosefinalvalue l1 v' i stepRule =>
+        exists v'; intros j learnerUpd; simp [updateMap] at *
+        split <;> try grind
+        rename_i iNeqJ; simp [iNeqJ] at learnerUpd
+        rcases IH with ⟨ v'', IHProp ⟩
+        
+
+      /-
+        simp [updateMap] at *; split <;> try grind
+        rcases stepRule with ⟨ set2, set2Counts, setCont, l1Nat⟩; subst_vars
+        simp at *; rcases IHApp with ⟨ s1None , set2Prop⟩
+        have set2PropApp := set2Prop set2 set2Counts;
+        have cc := countSupImpContains (a / 2) set2;
+        simp [systemInits] at s0Inits; rcases s0Inits with ⟨ _, _, _ ,_, num_bounds⟩ 
+        simp [num_bounds] at (cc); have cc_ := cc set2Counts; rcases cc_ with ⟨j, jExists ⟩; have contra1 := setCont j jExists; have contra2 := set2PropApp j jExists
+        grind
+        -/
+        
+        
+        
+        
+        
+        
+        
+        
+
+
+theorem valid_sys_imp_sing_val (s : System a l p):
+systemIsValid s
+-> ∃ v, ∀ j, (s.learners j).decide = some v ∨ (s.learners j).decide = none:= by
+   intros sIsValid
+   have cc := valid_sys_imp_sing_val_contra s sIsValid
+   rcases cc with ⟨v, exec ⟩; exists v
+   grind
+   
+
+theorem learners_choice_is_unique (s : System a l p):
+ ∀ i j v1 v2, systemIsValid s -> (s.learners i).decide = some v1 -> (s.learners j).decide = some v2 -> v1 = v2 := by
+   intro i j v1 v2 sIsValid sDecV1 sDecV2
+   have t1 := valid_sys_imp_sing_val s
+   grind
+     
+   
+   
+   
+   
