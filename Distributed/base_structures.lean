@@ -4,11 +4,13 @@ namespace Model
 -- Definition of a Map Type
 def Map (n: Nat) (T: Type _) := (Fin n) -> T
 
+
 def updateMap (f: Map n T) (i: Fin n) (t: T): (Fin n) -> T:=
     λ x => if i == x then t else f x
 
 -- Definition of a Set Type
 def Set (n: Nat) := Map n Bool
+
 
 @[simp]
 def emptySet : Set n:= λ _ => false
