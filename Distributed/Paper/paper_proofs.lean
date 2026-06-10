@@ -1,5 +1,5 @@
 -- Properties that check that the network is a valid network
-import Distributed.paper_model
+import Distributed.Paper.paper_model
 import Distributed.base_structures
 import Mathlib.Tactic.ByContra
 

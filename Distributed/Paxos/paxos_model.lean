@@ -15,7 +15,7 @@ deriving OfNat, BEq, DecidableEq, Ord, LT, HAdd, HMul, HMod, LE
 -- Type to represent the messages sent by the values
 inductive Message where
 | Prepare (propId: PropId) : Message
-| Promise (propId: PropId) (acceptId: Nat) (propVal: Option (Value × PropId)): Message
+| Promise (propId: PropId) (acceptId: Fin a) (propVal: Option (Value × PropId)): Message
 | Accept (a: PropId × Value): Message
 | Learn (v: Fin a × Value × PropId )
 
@@ -29,6 +29,9 @@ propRec: Set a
 
 def uniqueId (prop: Proposer p a): PropId :=
     (prop.propId * p + prop.id.toNat)
+
+def idOf (id: PropId) (pp: NeZero p): Fin p :=
+    Fin.ofNat p ((id % p) + 1)
 
 structure Acceptor (a: Nat) where
 id: Fin a
@@ -75,21 +78,19 @@ def AcceptorReceivesPrepare (n: PropId) (a1 a2: Acceptor a) (n1 n2: Network) (m:
    (m ∈ n1.messages ∧ m = Message.Prepare n ∧ n > a1.maxPrepareId) ∧ a2 = {a1 with maxPrepareId := n} ∧ n2.messages = (Message.Promise n a1.id a1.accepted) :: n1.messages
 
 @[simp]
-def ProposerReceivesPromise (maxP: Nat) (accId: Fin a) (p1 p2: Proposer p a) (n: Network) (m: Message) :=
-    ∀ opt v id,
-    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ 
-    if (maxP > p1.accPropId && opt == some (v, id))
-    then  p2 = {p1 with propRec := insertElem p1.propRec accId, accPropId := id, propVal := v}
-    else p2 = {p1 with propRec := insertElem p1.propRec accId}
+def ProposerReceivesPromise (accId: Fin a) (p1 p2: Proposer p a) (n: Network) (m: Message) (opt : Option (Value × PropId)) (v : Value) (id : PropId):=
+    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ p1.propId >= id ∧ 
+    if (opt == none && (p1.accPropId.ble id))
+    then p2 = {p1 with propRec := insertElem p1.propRec accId}
+    else  p2 = {p1 with propRec := insertElem p1.propRec accId, accPropId := id, propVal := some v} ∧ opt = some (v, id )
 
 @[simp]
 def ProposerSendsAcceptor (v: Value) (p1 p2: Proposer p a) (n1 n2: Network) :=
     count p1.propRec > (a / 2) ∧ p2 = {p1 with propVal := v} ∧ 
-    if p1.propVal == some v then
-       n2.messages = (Message.Accept (p1.propId, v)) :: n1.messages
+    if p1.propVal == none then
+      n2.messages = (Message.Accept (p1.propId, v)) :: n1.messages 
     else
-       n2.messages = (Message.Accept (p1.propId, v)) :: n1.messages 
-    
+      n2.messages = (Message.Accept (p1.propId, v)) :: n1.messages ∧ p1.propVal = some v
 @[simp]
 def AcceptorAccepts (id: PropId) (v: Value) (a1 a2: Acceptor a) (n: Network) (m: Message) :=
     m = Message.Accept (id, v) ∧ a1.maxPrepareId <= id ∧ m ∈ n.messages
@@ -114,7 +115,7 @@ def ChooseVal (l1 l2: Learner a l) (v: Value) (id: PropId):=
 inductive WorkingStep {a l p: Nat}: System a l p -> System a l p -> Prop where
 | sendprepare: ∀ s n2 m i p2, ProposerSendsPrepare (s.proposers i) p2 s.network n2 m -> WorkingStep s {s with proposers := updateMap s.proposers i p2, network := n2}
 | sendpromise: ∀ s i n m a2 n2, AcceptorReceivesPrepare n (s.acceptors i) a2 s.network n2 m -> WorkingStep s {s with network := n2,  acceptors := updateMap s.acceptors i a2}
-| receivepromise: ∀ i s maxN accId p2 m, ProposerReceivesPromise maxN accId (s.proposers i)  p2 s.network m -> WorkingStep s {s with proposers := updateMap s.proposers i p2}
+| receivepromise: ∀ i s accId p2 m opt v id, ProposerReceivesPromise accId (s.proposers i)  p2 s.network m opt v id -> WorkingStep s {s with proposers := updateMap s.proposers i p2}
 | sendacceptor : ∀ s v n2 i, ProposerSendsAcceptor v (s.proposers i) p2 s.network n2 -> WorkingStep s {s with network := n2, proposers := updateMap s.proposers i p2}
 | receiveacceptor: ∀ id s i v a2 m, AcceptorAccepts id v (s.acceptors i) a2 s.network m -> WorkingStep s {s with acceptors := updateMap s.acceptors i a2}
 | sendlearner: ∀ s i n2 v id, SendLearner (s.acceptors i) s.network n2 v id -> WorkingStep s {s with network := n2}
@@ -160,3 +161,13 @@ def systemIsValid (s: System a l p) :=
     ∃ s0, systemInits s0 ∧ steps s0 s
 
 
+theorem idIsK (s1: System a l p):
+systemIsValid s1
+-> ∀ k, (s1.acceptors k).id = k := by
+intros svalid; rcases  svalid with ⟨ s0, s0Inits, s0Steps ⟩
+induction s0Steps
+. simp [systemInits, acceptorInits] at s0Inits; simp [s0Inits]
+. rename_i s2 s3 steps step IH;
+  cases step <;> rename_i stepRule <;> cases stepRule <;> try (rename_i stepRule; simp at stepRule; grind)
+  intros k; simp [updateMap] at *; split <;> try grind
+  intros k; simp [updateMap] at *; split <;> try grind

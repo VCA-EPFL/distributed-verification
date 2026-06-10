@@ -1,12 +1,12 @@
 import Distributed.base_structures
-import Distributed.paxos_model
+import Distributed.Paxos.paxos_model
 import Mathlib.Tactic.ByContra
 import Mathlib.Tactic.Cases 
 
 open Model
 open PaxosModel
 namespace PaxosProof
-
+/-
 theorem idIsK (s1: System a l p):
 systemIsValid s1
 -> ∀ k, (s1.acceptors k).id = k := by
@@ -17,7 +17,7 @@ induction s0Steps
   cases step <;> rename_i stepRule <;> cases stepRule <;> try (rename_i stepRule; simp at stepRule; grind)
   intros k; simp [updateMap] at *; split <;> try grind
   intros k; simp [updateMap] at *; split <;> try grind
-  
+  -/
 def acc_invariant (s1 : System a l p) (v : Value) (id: PropId):=
   ∃ (s : Set a), count s > a / 2 ∧
     (∀ i, contains s i →
@@ -48,10 +48,24 @@ def inv31 (s1: System a l p) (i: Fin a) (v: Value) (id: PropId):=
 ->  Message.Accept (id, v) ∈ s1.network.messages
 
 
-def inv4b1 (s: System a l p) (v1 v2 : Value) (id: PropId) :=
-Message.Accept (id, v1) ∈ s.network.messages
--> Message.Accept (id, v2) ∈ s.network.messages
--> v1 = v2
+def inv4b1 (s: System a l p) (i: Fin a) (v: Value) (id: PropId) :=
+Message.Learn (i,  v, id)  ∈ s.network.messages
+-> ∀  id' p, Message.Promise id' i p ∈ s.network.messages
+-> id' >= id
+-> p ≠ none
+
+
+
+def inv4b3 (s: System a l p) (i: Fin a) (id: PropId) (p: Option (Value × PropId)):=
+Message.Promise id i p ∈ s.network.messages
+-> id <= (s.acceptors i).maxPrepareId
+
+
+def inv4b2 (s: System a l p) (i: Fin a) (id: PropId) (p: Option (Value × PropId)):=
+Message.Promise id i p ∈ s.network.messages
+-> ∀ v' id', (s.acceptors i).accepted = some (v', id')
+-> id' > id ∨ p = (s.acceptors i).accepted
+
 
 def inv4b (s: System a l p) (v : Value) (id: PropId) :=
 (∃ set, count set > a / 2 ∧ (∀ (i: Fin a), contains  set i -> Message.Learn (i, v, id) ∈ s.network.messages))
@@ -62,18 +76,11 @@ def inv4b (s: System a l p) (v : Value) (id: PropId) :=
 
 def inv4c (s: System a l p) (v : Value) (id: PropId) :=
 Message.Accept (id, v) ∈ s.network.messages
--> (∃ set, count set > a / 2 ∧ ((∀ (i: Fin a), contains  set i ->
-(¬(∃ id' v', (s.acceptors i).accepted = some (v', id') ∧ id' < id)))
-∨ (∀ (i: Fin a), contains  set i ->
-(∃ idmax, idmax < id  ∧
-(∃ i, contains set i = true ∧ (s.acceptors i).accepted  = some (v, idmax))
-∧ 
-(∀ i, contains set i = true ->
-∀ v' id', (s.acceptors i).accepted = some (v', id')
--> id' <= idmax)
-))))
-
-
+ -> ∃ (set: Set a), count set > a / 2
+∧ (∀ i, contains set i -> ∃ p, Message.Promise id i p ∈ s.network.messages) 
+∧ ((∀ i, contains set i -> Message.Promise id i none ∈ s.network.messages)
+∨ ((∃ i, contains set i ∧ Message.Promise  id i (some (v, id)) ∈ s.network.messages)
+∧ (∀ i, contains set i  -> ∀ v' id', Message.Promise id i (some (v', id')) ∈ s.network.messages -> id' <= id)))
 
 
 def inv42 (s1: System a l p) (i: Fin a) (v: Value) (id: PropId):=
@@ -125,7 +132,35 @@ cases step <;> rename_i stepRule <;> cases stepRule <;> (try (rename_i stepRule;
 . rename_i stepRule eq; split at learnInN <;> try grind
   rcases stepRule with ⟨ messAcc, b2, mInN, accNat⟩; subst eq; subst accNat
   simp at ⊢ learnInN; simp [learnInN, PropId]
-  
+
+
+theorem inv4b1Proof_ind (s1 s2: System a l p) (i: Fin a)  (v: Value) (id: PropId) :
+step s1 s2
+-> inv4b1 s1 i v id
+-> inv41  s1 i v id
+-> (∀ i, (s1.acceptors i).id = i)
+-> (∀ p id, inv4b2 s1 i id p )
+-> inv4b1 s2 i v id := by
+   simp [inv4b1]; intros step IH i41 iEq i4b2 mLearn id2 prop  mProp id2Bound
+   cases step <;> rename_i stepRule <;> cases stepRule <;> repeat (rename_i stepRule; rcases stepRule) <;> subst_vars  <;> try grind 
+   . rename_i i pid m net netRules mNat
+     simp at *; rw[mNat] at mLearn mProp; simp at mLearn mProp
+     cases mProp <;> try grind
+     have ⟨ v2, id2 , rest⟩  := i41 mLearn
+     rename_i contra; rcases contra with ⟨ eq1, eq2, eq3 ⟩; rcases rest with ⟨ eq4, eq5 ⟩; subst_vars; rw [iEq i] at *
+     rw [eq5]; simp
+   . simp at *; grind
+   . simp at *; rename_i mNat; rw [mNat] at mLearn mProp; simp at mLearn mProp; clear mNat
+     cases mLearn <;> try grind
+     clear IH; rename_i dd; rcases dd with ⟨ eq1, eq2, eq3 ⟩ 
+     subst eq1 eq2 eq3; clear i41
+     have contra := i4b2 prop id2 mProp v id;
+     rename_i j net prop
+     rw [iEq j] at contra
+     cases (contra prop) <;> try grind
+     rename_i cc; exfalso
+     exact absurd id2Bound (Nat.not_le.mpr cc)
+     
 
 
 theorem inv43Proof (s: System a l p) (v: Value) (i: Fin a) (id: PropId)  :
@@ -213,6 +248,9 @@ cases step <;> rename_i stepRule <;> cases stepRule <;> try (rename_i stepRule; 
   rename_i eqs; rcases eqs with ⟨ iId, vEq, idEq ⟩; subst_vars
   exists v'; exists pid; simp [PropId, iBound]; exact sAcc
 
+
+
+
 theorem inv41Proof (s: System a l p) (v: Value) (i: Fin a) (id: PropId)  :
 systemIsValid s
 -> inv41 s i v id:= by
@@ -228,6 +266,63 @@ induction s0Steps  with
   have s2Valid:(systemIsValid s2) := by (simp [systemIsValid]; grind)
   have IH2 := inv42Proof s2 v i id s2Valid
   exact (inv41Proof_ind s2 s3 i v id s2Step IHApp (idIsK s2 s2Valid) IH2)
+
+
+theorem inv4b2Proof_ind (s1 s2: System a l p) (i: Fin a) (id: PropId)  (p: Option (Value × PropId)):
+step s1 s2
+-> inv4b2 s1 i id p
+-> inv4b2 s2 i id p := by
+simp [inv4b2]; intros step  IH promInM v2 id2 accIsSome
+cases step <;> rename_i stepRule <;> cases stepRule <;> try (rename_i stepRule; simp at stepRule; grind)
+. rename_i j pid mess acc net stepRule
+  simp at *; simp [updateMap] at *
+  by_cases (j = i) <;> try grind
+  rename_i neq; simp [neq] at ⊢ accIsSome
+  sorry
+. rename_i id3 j v3 acc mess stepRule
+  rcases stepRule with ⟨ mAccs, idBound, mInN, accNat ⟩; subst_vars
+  simp [updateMap] at *; split at accIsSome
+  . rename_i s; subst s; simp at ⊢ accIsSome
+    rcases accIsSome with ⟨ eq1, eq2 ⟩; subst eq1 eq2
+    sorry
+  . rename_i neq; simp [neq] at accIsSome ⊢
+    exact (IH promInM v2 id2 accIsSome)
+  
+  
+
+
+theorem inv4b2Proof (s: System a l p) (i: Fin a) (id: PropId)  (p: Option (Value × PropId)):
+systemIsValid s
+-> inv4b2 s i id p:= by
+intros sIsValid 
+rcases sIsValid with ⟨ s0, s0Inits, s0Steps ⟩
+induction s0Steps  with
+| refl =>
+  simp [systemInits, networkInits] at s0Inits
+  simp [inv4b2, s0Inits] at ⊢ 
+| trans s2 s3 s0Steps s2Step IH=>
+  exact (inv4b2Proof_ind s2 s3 i id p s2Step IH)
+
+
+
+
+theorem inv4b1Proof (s: System a l p) (i: Fin a) (v: Value) (id: PropId)  :
+systemIsValid s
+-> inv4b1 s i v id:= by
+intros sIsValid
+have ⟨ s0, s0Inits, s0Steps ⟩ := sIsValid
+induction s0Steps  with
+| refl =>
+  simp [systemInits, networkInits] at s0Inits
+  simp [inv4b1, s0Inits] at ⊢
+| trans s2 s3 s0Steps s2Step IH=>
+  simp [systemIsValid, ] at (IH)
+  have IHApp := IH s0; simp [s0Inits, s0Steps] at IHApp
+  have s2Valid:(systemIsValid s2) := by (simp [systemIsValid]; grind)
+  have p1 := inv41Proof s2 v i id s2Valid
+  have p2 :(∀ (p_1 : Option (Value × PropId)) (id : PropId), inv4b2 s2 i id p_1) := by intros opt id; exact (inv4b2Proof s2 i id opt s2Valid)
+  exact (inv4b1Proof_ind s2 s3 i v id s2Step (IH s0 s0Inits s0Steps ) p1 (idIsK s2 s2Valid) p2)
+
 
 
 
@@ -320,7 +415,7 @@ induction s0Steps  with
 
 
 
-theorem inv3Proof_ind (s1 s2: System a l p) (i: Fin a) (v: Value) (id: PropId) :
+theorem inv3Proof_ind (s1 s2: System a l p) (i: Fin a) (v: Value) (id:PropId) :
 step s1 s2
 -> inv3 s1 i v id
 -> (∀ i, (s1.acceptors i).id = i)
@@ -352,7 +447,7 @@ theorem inv4a1Proof_ind (s1 s2: System a l p) (i: Fin a) (v: Value) (id: PropId)
 step s1 s2
 -> inv4a1 s1 i v id
 -> inv4a1 s2 i v id := by
-simp [inv4a1]; intros step IH sIsSome
+simp [inv4a1]; intros step IH sIsSome 
 cases step <;> rename_i stepRule <;> cases stepRule <;> (try (rename_i stepRule; simp at stepRule; grind))
 . rename_i j pid mess acc net stepRule
   rcases stepRule with ⟨mRules, accNat, netNat⟩; subst accNat
@@ -363,28 +458,20 @@ cases step <;> rename_i stepRule <;> cases stepRule <;> (try (rename_i stepRule;
   simp at sIsSome; rcases sIsSome with ⟨ eq1, eq2 ⟩; subst eq1 eq2
   exact mInN
 
-theorem inv4cProof_ind (s1 s2: System a l p) (v: Value) (id: PropId) :
+theorem inv4cProof_ind (s1 s2: System a l p) (v: Value) (id: PropId):
 step s1 s2
 -> inv4c s1 v id
 -> inv4c s2 v id := by
-simp [inv4c]; intros step IH sIsSome
-cases step <;> rename_i stepRule <;> cases stepRule <;> (try (rename_i stepRule; simp [updateMap] at *; grind))
-. rename_i j pid mess acc net stepRule
-  rcases stepRule with ⟨ mProp, accNat , netNat ⟩; subst accNat
-  rw [netNat] at sIsSome; simp at sIsSome
-  have ⟨ set, setCount, setContains ⟩ := IH sIsSome; clear IH
-  exists set; simp [setCount, updateMap]
-  cases setContains <;> try grind
-  left; intros i;split
-  rename_i eq d;subst j; simp; exact (eq i)
-  rename_i eq d; exact (eq i)
-  right; sorry
-. rename_i v' net p stepRule
-  rcases stepRule with ⟨ countHave, choice ⟩
-  sorry
-. simp at sIsSome
-  sorry
-
+simp [inv4c]; intros step IH accInN
+cases step <;> rename_i stepRule <;> cases stepRule <;> repeat (rename_i stepRule; rcases stepRule) <;> (try (rename_i mNat; rw [mNat] at accInN ⊢)) <;> try grind
+. simp at accInN mNat; subst_vars; rename_i mNat
+  rw [mNat] at accInN ⊢; simp at accInN ⊢ ; exact (IH accInN)
+. simp at *; 
+. sorry
+. sorry
+. sorry
+. sorry
+. sorry
 
 
 theorem inv4cProof (s: System a l p) (v: Value) (id: PropId)  :
@@ -399,58 +486,38 @@ induction s0Steps  with
 | trans s2 s3 s0Steps s2Step IH=>
   exact (inv4cProof_ind s2 s3 v id s2Step IH)
 
+  
 
-theorem inv4b1Proof (s: System a l p) (v1 v2: Value) (id: PropId)  :
-systemIsValid s
--> inv4b1 s v1 v2 id:= by 
-sorry
+  
+  
+
+
+
 
 theorem inv4bProof (s: System a l p) (v: Value) (id: PropId)  :
 systemIsValid s
--> inv4b s v id:= by 
-intros svalid setRule id1 v' mAccs idBound
-rcases setRule with ⟨ set1, set1Count, set1Contains ⟩
-have ⟨ set2, set2Count, setRules⟩  := inv4cProof s v' id1 svalid mAccs
-have cc := setMaxContainsBoth set1 set2 (by simp [set1Count]); simp [set2Count] at cc
-rcases cc with ⟨ i, set1ContainsI, set2ContainsI ⟩
-have p1 := set1Contains i set1ContainsI
-rcases setRules with c1 | c2
-. have p2 : (∀ id2 v', id2 < id1 -> (s.acceptors i).accepted ≠ some (v', id2)) := by {intros id2 v' idBound; grind}
-  
-  
-  
-  
-  
-. sorry
-/-
-induction id1 using Nat.strongRecOn 
-rename_i n IH
-intros setRule v' mAcc iBound
-rcases setRule with ⟨set, setCount, setContains⟩
-have ⟨set2, setCount2, set2Contains1⟩ := inv4cProof s v' n svalid mAcc
-have dd := setMaxContainsBoth set set2 (by simp [setCount])
-simp [setCount2] at dd; rcases dd with  ⟨ i, i1Cont, i2Cont ⟩
-have hLearn := setContains i i1Cont
-have ⟨v'', id'', hge, hAcc⟩ := (inv41Proof s v i id) svalid hLearn
-rcases set2Contains1 with hA | hB
-
-
-. have hAccV := (inv3Proof s i v id) svalid hLearn
-  by_cases hid : (id = n) 
-  · subst hid
-    exact inv4b1Proof s v v' id svalid hAccV mAcc
-  . have ⟨ set3, set3Count, set3Rules ⟩   := inv4cProof s v' n svalid mAcc
-    rcases set3Rules with hLeft | hRight
-    obtain ⟨j, hj1, hj3⟩ := setMaxContainsBoth set set3 setCount set3Count
-    have hjLearn := setContains j hj1
-    have h41 := (inv41Proof s  v j id) svalid hjLearn
-    obtain ⟨vj, idj, hidj, hjAcc⟩ := h41
-    have hno := hLeft j hj3
-    simp  at hno; have contra := hno idj vj hjAcc
--/
-    
+-> inv4b s v id:= by
+intros sIsValid setRule id2 v2 mAccs
+rcases setRule with ⟨ set1, setCount1, setContains1 ⟩ 
+have ⟨ set2, setCount2, setContains2R1, setContains2R2 ⟩  := inv4cProof s v2 id2 sIsValid mAccs
+have ⟨ i, iContained1, iContained2 ⟩ := setMaxContainsBoth set1 set2 setCount1 setCount2
+rcases setContains2R2 with setContains2R2 | setContains2R3
+. have p1 := setContains2R2 i iContained2
+  have p2 := setContains1 i iContained1
+  intros id2Bound; exfalso
+  have dd := inv4b1Proof s i v id sIsValid p2 id2 none p1 id2Bound (by simp)
+  exact dd
+. rcases setContains2R3 with ⟨ existsOneId, forAllId ⟩ 
+  have p2 := setContains1 i iContained1
+  have ⟨ prop , p3 ⟩ := setContains2R1 i iContained2
+  have p4 := forAllId i iContained2
+  intros idBound; cases prop 
+  . have dd := inv4b1Proof s i v id sIsValid p2 id2 none p3 idBound;simp at dd
+  . rename_i prop2; rcases prop2 with ⟨ v3, id3 ⟩;  
     
   
+  
+
 
 theorem inv4a1Proof (s: System a l p) (i: Fin a) (v: Value) (id: PropId)  :
 systemIsValid s
