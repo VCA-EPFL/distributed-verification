@@ -79,10 +79,10 @@ def AcceptorReceivesPrepare (n: PropId) (a1 a2: Acceptor a) (n1 n2: Network) (m:
 
 @[simp]
 def ProposerReceivesPromise (accId: Fin a) (p1 p2: Proposer p a) (n: Network) (m: Message) (opt : Option (Value × PropId)) (v : Value) (id : PropId):=
-    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ p1.propId >= id ∧ 
-    if (opt == none && (p1.accPropId.ble id))
+    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ p1.propId >= id ∧  (opt ≠ none -> opt = some (v, id)) ∧ 
+    if (opt == none || (id.blt p1.accPropId))
     then p2 = {p1 with propRec := insertElem p1.propRec accId}
-    else  p2 = {p1 with propRec := insertElem p1.propRec accId, accPropId := id, propVal := some v} ∧ opt = some (v, id )
+    else  p2 = {p1 with propRec := insertElem p1.propRec accId, accPropId := id, propVal := some v} 
 
 @[simp]
 def ProposerSendsAcceptor (v: Value) (p1 p2: Proposer p a) (n1 n2: Network) :=
