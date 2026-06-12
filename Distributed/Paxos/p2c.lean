@@ -11,8 +11,6 @@ namespace PaxosProof
 
 
 
-
-
 --INV4c1
 def inv4c1 (s: System a l p) (i: Fin p) :=
 (s.proposers i).propVal = none
@@ -126,7 +124,7 @@ simp [inv4c2]; intros step IH i43 i4c21 i4c1 sPropNone
 cases step <;> rename_i stepRule <;> cases stepRule <;> repeat (rename_i stepRule; rcases stepRule) <;> (try simp [updateMap] at * <;> split) <;> (try grind) <;> subst_vars <;> by_cases ((s1.proposers i).propVal = some v) <;> (try grind)
 . rename_i i accId p2 mess opt v2 pid stepRule;
   simp [updateMap] at *
-  rcases stepRule with ⟨mIsProp, mInN, pidBound, optIsSome, splitX ⟩
+  rcases stepRule with ⟨mIsProp, mInN, pidBound, _, optIsSome, splitX ⟩
   split at splitX <;> split at sPropNone <;> subst_vars <;> simp [updateMap, insertElem, contains] at * <;> by_cases (opt = none) <;> (try grind) 
   . left; constructor <;> try grind
     . have IccBound: (0 < ((s1.proposers i).accPropId)) := by {

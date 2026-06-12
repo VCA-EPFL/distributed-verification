@@ -79,7 +79,7 @@ def AcceptorReceivesPrepare (n: PropId) (a1 a2: Acceptor a) (n1 n2: Network) (m:
 
 @[simp]
 def ProposerReceivesPromise (accId: Fin a) (p1 p2: Proposer p a) (n: Network) (m: Message) (opt : Option (Value × PropId)) (v : Value) (id : PropId):=
-    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ p1.propId >= id ∧  (opt ≠ none -> opt = some (v, id)) ∧ 
+    m = Message.Promise p1.propId accId opt ∧  m ∈ n.messages ∧ p1.propId >= id ∧  count p1.propRec <= (a / 2) ∧ (opt ≠ none -> opt = some (v, id)) ∧ 
     if (opt == none || (id.blt p1.accPropId))
     then p2 = {p1 with propRec := insertElem p1.propRec accId}
     else  p2 = {p1 with propRec := insertElem p1.propRec accId, accPropId := id, propVal := some v} 
@@ -116,7 +116,7 @@ inductive WorkingStep {a l p: Nat}: System a l p -> System a l p -> Prop where
 | sendprepare: ∀ s n2 m i p2, ProposerSendsPrepare (s.proposers i) p2 s.network n2 m -> WorkingStep s {s with proposers := updateMap s.proposers i p2, network := n2}
 | sendpromise: ∀ s i n m a2 n2, AcceptorReceivesPrepare n (s.acceptors i) a2 s.network n2 m -> WorkingStep s {s with network := n2,  acceptors := updateMap s.acceptors i a2}
 | receivepromise: ∀ i s accId p2 m opt v id, ProposerReceivesPromise accId (s.proposers i)  p2 s.network m opt v id -> WorkingStep s {s with proposers := updateMap s.proposers i p2}
-| sendacceptor : ∀ s v n2 i, ProposerSendsAcceptor v (s.proposers i) p2 s.network n2 -> WorkingStep s {s with network := n2, proposers := updateMap s.proposers i p2}
+| sendacceptor : ∀ p2 s v n2 i , ProposerSendsAcceptor v (s.proposers i) p2 s.network n2 -> WorkingStep s {s with network := n2, proposers := updateMap s.proposers i p2}
 | receiveacceptor: ∀ id s i v a2 m, AcceptorAccepts id v (s.acceptors i) a2 s.network m -> WorkingStep s {s with acceptors := updateMap s.acceptors i a2}
 | sendlearner: ∀ s i n2 v id, SendLearner (s.acceptors i) s.network n2 v id -> WorkingStep s {s with network := n2}
 | receivelearner: ∀ s i l2 m v id acc, RecvLearner (s.network) (s.learners i) l2 m v acc id -> WorkingStep s {s with learners := updateMap s.learners i l2}

@@ -62,10 +62,14 @@ count s <= n := by
         sorry
         
 
-theorem insertIncreasesCount (s: Set n):
+theorem insertIncreasesCount (s: Set n) (i: Fin n):
 count s <=  count (insertElem s i) := by
 sorry
-      
+
+theorem insertBoundsCount (s: Set n) (i: Fin n):
+count (insertElem s i) <= count s +1 := by
+sorry
+
       
       
     
@@ -101,6 +105,8 @@ theorem countSupImpContains (i: Nat) (s: Set a) :
 -> i < count s
 -> ∃ j, contains s j == true := by sorry
 
+theorem emptySetEqZero {a: Nat}:
+@count a emptySet = 0 := by sorry
 
 
 def setMaxContainsBoth (set1 set2: Set a):
